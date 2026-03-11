@@ -2,39 +2,61 @@ import useGameStore from '../store/gameStore';
 
 let ws = null;
 let reconnectAttempts = 0;
+let reconnectTimerId = null;
+let waitForOpenId = null;
+
 const MAX_RECONNECT_ATTEMPTS = 5;
 const RECONNECT_DELAY = 2000;
+const WAIT_FOR_OPEN_TIMEOUT = 5000; // 5s max wait
 
-// Use environment variable, fallback to localhost
-const WS_URL = import.meta.env.VITE_WS_URL || "ws://localhost:8080/ws";
+const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8080/ws';
 
 console.log('WebSocket will connect to:', WS_URL);
 
 export function connectWebSocket(onOpenCallback) {
+  // Already open → fire callback immediately
   if (ws && ws.readyState === WebSocket.OPEN) {
-    console.log('WebSocket already open');
     if (onOpenCallback) onOpenCallback();
     return;
   }
 
+  // Currently connecting → wait with a timeout
   if (ws && ws.readyState === WebSocket.CONNECTING) {
-    console.log('WebSocket already connecting, waiting...');
-    const waitForOpen = setInterval(() => {
+    clearInterval(waitForOpenId);
+    let elapsed = 0;
+    const POLL = 100;
+
+    waitForOpenId = setInterval(() => {
+      elapsed += POLL;
+
       if (ws && ws.readyState === WebSocket.OPEN) {
-        clearInterval(waitForOpen);
+        clearInterval(waitForOpenId);
+        waitForOpenId = null;
         if (onOpenCallback) onOpenCallback();
+      } else if (
+        !ws ||
+        ws.readyState >= WebSocket.CLOSING ||
+        elapsed >= WAIT_FOR_OPEN_TIMEOUT
+      ) {
+        clearInterval(waitForOpenId);
+        waitForOpenId = null;
+        console.warn('WebSocket failed or timed out while waiting to open');
       }
-    }, 100);
+    }, POLL);
     return;
   }
 
+  // ── Fresh connection ────────────────────────────────────────
+  // Reset attempts so reconnection works for this new session
+  reconnectAttempts = 0;
+  clearTimeout(reconnectTimerId);
+  reconnectTimerId = null;
+
   console.log('Initiating WebSocket connection to:', WS_URL);
   ws = new WebSocket(WS_URL);
-  const store = useGameStore.getState();
-  store.setSocket(ws);
 
   ws.onopen = () => {
-    console.log('✅ WebSocket connected successfully');
+    console.log('✅ WebSocket connected');
     reconnectAttempts = 0;
     useGameStore.getState().setConnected(true);
     if (onOpenCallback) onOpenCallback();
@@ -42,42 +64,50 @@ export function connectWebSocket(onOpenCallback) {
 
   ws.onmessage = (event) => {
     try {
-      const message = JSON.parse(event.data);
-      handleMessage(message);
+      handleMessage(JSON.parse(event.data));
     } catch (e) {
       console.error('Failed to parse message:', e);
     }
   };
 
   ws.onclose = (event) => {
-    console.log('WebSocket disconnected, code:', event.code, 'reason:', event.reason);
+    console.log('WebSocket closed — code:', event.code, 'reason:', event.reason);
     useGameStore.getState().setConnected(false);
     ws = null;
 
-    if (event.code !== 1000 && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-      reconnectAttempts++;
-      console.log(`Reconnect attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS} in ${RECONNECT_DELAY * reconnectAttempts}ms`);
-      setTimeout(() => {
-        const state = useGameStore.getState();
-        if (state.roomId) {
-          connectWebSocket(() => {
-            sendMessage('join_room', {
-              roomId: state.roomId,
-              playerName: state.playerName,
-            });
-          });
-        } else {
-          connectWebSocket();
-        }
-      }, RECONNECT_DELAY * reconnectAttempts);
-    } else if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-      console.error('Max reconnection attempts reached');
+    // Don't reconnect on clean close (1000) or if max attempts reached
+    if (event.code === 1000 || reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+      if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+        console.error('Max reconnection attempts reached');
+      }
+      return;
     }
+
+    reconnectAttempts++;
+    const delay = RECONNECT_DELAY * reconnectAttempts;
+    console.log(
+      `Reconnect attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS} in ${delay}ms`
+    );
+
+    reconnectTimerId = setTimeout(() => {
+      reconnectTimerId = null;
+      const state = useGameStore.getState();
+
+      // Only attempt rejoin if the user is still in a room
+      if (state.roomId && state.playerName) {
+        connectWebSocket(() => {
+          sendMessage('join_room', {
+            roomId: state.roomId,
+            playerName: state.playerName,
+          });
+        });
+      }
+      // If state was reset (user left), do nothing
+    }, delay);
   };
 
   ws.onerror = (error) => {
     console.error('❌ WebSocket error:', error);
-    console.error('Connection URL was:', WS_URL);
   };
 }
 
@@ -90,12 +120,26 @@ export function sendMessage(type, payload = {}) {
 }
 
 export function disconnectWebSocket() {
+  // Cancel any pending reconnect
+  clearTimeout(reconnectTimerId);
+  reconnectTimerId = null;
+
+  // Cancel any pending waitForOpen poll
+  clearInterval(waitForOpenId);
+  waitForOpenId = null;
+
+  // Prevent further reconnection
   reconnectAttempts = MAX_RECONNECT_ATTEMPTS;
+
   if (ws) {
     ws.close(1000, 'User disconnected');
     ws = null;
   }
+
+  useGameStore.getState().setConnected(false);
 }
+
+// ── Message handler ──────────────────────────────────────────
 
 function handleMessage(message) {
   const { type, payload } = message;
@@ -151,7 +195,7 @@ function handleMessage(message) {
 
     case 'word_selection':
       store.setGamePhase('word_selection');
-      store.setWordOptions(payload.words);  
+      store.setWordOptions(payload.words);
       store.setCurrentRound(payload.round);
       store.setTotalRounds(payload.totalRounds);
       store.setTimeLeft(payload.drawTime);

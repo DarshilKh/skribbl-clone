@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 
 const COLORS = [
@@ -11,12 +12,38 @@ const COLORS = [
 const BRUSH_SIZES = [2, 4, 8, 12, 20];
 
 export default function DrawingTools({ canvasRef }) {
-  if (!canvasRef?.current) return null;
+  // ── Own the UI state locally ──────────────────────────────
+  // DrawingTools is the sole mutator of these values, so keeping
+  // local state guarantees the toolbar re-renders on every click.
+  // Changes are pushed to Canvas via the imperative ref.
+  const [tool, setTool] = useState('brush');
+  const [color, setColor] = useState('#000000');
+  const [brushSize, setBrushSize] = useState(4);
 
-  const canvas = canvasRef.current;
-  const tool = canvas.tool;
-  const color = canvas.color;
-  const brushSize = canvas.brushSize;
+  const handleColorChange = (c) => {
+    setColor(c);
+    setTool('brush');
+    canvasRef.current?.setColor(c);
+    canvasRef.current?.setTool('brush');
+  };
+
+  const handleToolChange = (t) => {
+    setTool(t);
+    canvasRef.current?.setTool(t);
+  };
+
+  const handleBrushSizeChange = (size) => {
+    setBrushSize(size);
+    canvasRef.current?.setBrushSize(size);
+  };
+
+  const handleUndo = () => {
+    canvasRef.current?.undoStroke();
+  };
+
+  const handleClear = () => {
+    canvasRef.current?.clearCanvas();
+  };
 
   return (
     <motion.div
@@ -30,13 +57,13 @@ export default function DrawingTools({ canvasRef }) {
           {COLORS.map((c) => (
             <button
               key={c}
-              onClick={() => {
-                canvas.setColor(c);
-                canvas.setTool('brush');
-              }}
+              onClick={() => handleColorChange(c)}
               className={`w-7 h-7 rounded-full border-2 transition-transform hover:scale-110
-                         ${color === c && tool === 'brush' ? 'border-primary scale-110 ring-2 ring-primary/30' : 'border-gray-300'}`}
+                         ${color === c && tool === 'brush'
+                           ? 'border-primary scale-110 ring-2 ring-primary/30'
+                           : 'border-gray-300'}`}
               style={{ backgroundColor: c }}
+              title={c}
             />
           ))}
         </div>
@@ -49,13 +76,19 @@ export default function DrawingTools({ canvasRef }) {
           {BRUSH_SIZES.map((size) => (
             <button
               key={size}
-              onClick={() => canvas.setBrushSize(size)}
+              onClick={() => handleBrushSizeChange(size)}
               className={`flex items-center justify-center w-8 h-8 rounded-lg transition-colors
-                         ${brushSize === size ? 'bg-primary/20 border-2 border-primary' : 'bg-white border border-gray-200 hover:bg-gray-100'}`}
+                         ${brushSize === size
+                           ? 'bg-primary/20 border-2 border-primary'
+                           : 'bg-white border border-gray-200 hover:bg-gray-100'}`}
+              title={`Size ${size}`}
             >
               <div
                 className="rounded-full bg-gray-800"
-                style={{ width: Math.min(size + 2, 18), height: Math.min(size + 2, 18) }}
+                style={{
+                  width: Math.min(size + 2, 18),
+                  height: Math.min(size + 2, 18),
+                }}
               />
             </button>
           ))}
@@ -69,9 +102,11 @@ export default function DrawingTools({ canvasRef }) {
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
-            onClick={() => canvas.setTool('brush')}
+            onClick={() => handleToolChange('brush')}
             className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors
-                       ${tool === 'brush' ? 'bg-primary text-white' : 'bg-white border border-gray-200 hover:bg-gray-100'}`}
+                       ${tool === 'brush'
+                         ? 'bg-primary text-white'
+                         : 'bg-white border border-gray-200 hover:bg-gray-100'}`}
           >
             ✏️ Brush
           </motion.button>
@@ -79,9 +114,11 @@ export default function DrawingTools({ canvasRef }) {
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
-            onClick={() => canvas.setTool('eraser')}
+            onClick={() => handleToolChange('eraser')}
             className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors
-                       ${tool === 'eraser' ? 'bg-primary text-white' : 'bg-white border border-gray-200 hover:bg-gray-100'}`}
+                       ${tool === 'eraser'
+                         ? 'bg-primary text-white'
+                         : 'bg-white border border-gray-200 hover:bg-gray-100'}`}
           >
             🧹 Eraser
           </motion.button>
@@ -89,9 +126,9 @@ export default function DrawingTools({ canvasRef }) {
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
-            onClick={() => canvas.undoStroke()}
-            className="px-3 py-1.5 rounded-lg text-sm font-semibold bg-white border border-gray-200
-                       hover:bg-gray-100 transition-colors"
+            onClick={handleUndo}
+            className="px-3 py-1.5 rounded-lg text-sm font-semibold bg-white border
+                       border-gray-200 hover:bg-gray-100 transition-colors"
           >
             ↩️ Undo
           </motion.button>
@@ -99,7 +136,7 @@ export default function DrawingTools({ canvasRef }) {
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
-            onClick={() => canvas.clearCanvas()}
+            onClick={handleClear}
             className="px-3 py-1.5 rounded-lg text-sm font-semibold bg-danger text-white
                        hover:opacity-90 transition-opacity"
           >

@@ -1,16 +1,20 @@
 import { create } from 'zustand';
 
-const useGameStore = create((set, get) => ({
-  // Connection
-  socket: null,
+const MAX_MESSAGES = 200;
+const MAX_DRAW_HISTORY = 5000;
+
+let messageCounter = 0;
+
+const useGameStore = create((set) => ({
+  // ── Connection ──────────────────────────────────────────────
   connected: false,
 
-  // Player
+  // ── Player ──────────────────────────────────────────────────
   playerId: null,
   playerName: '',
   isHost: false,
 
-  // Room
+  // ── Room ────────────────────────────────────────────────────
   roomId: null,
   players: [],
   hostId: null,
@@ -23,8 +27,8 @@ const useGameStore = create((set, get) => ({
     isPrivate: false,
   },
 
-  // Game State
-  gamePhase: 'lobby', // lobby, word_selection, choosing, drawing, round_end, game_over
+  // ── Game State ──────────────────────────────────────────────
+  gamePhase: 'lobby',
   currentRound: 0,
   totalRounds: 3,
   drawerId: null,
@@ -35,21 +39,20 @@ const useGameStore = create((set, get) => ({
   timeLeft: 0,
   wordOptions: [],
 
-  // Chat
+  // ── Chat ────────────────────────────────────────────────────
   messages: [],
 
-  // Drawing
+  // ── Drawing ─────────────────────────────────────────────────
   drawHistory: [],
 
-  // Round End / Game Over
+  // ── End Screens ─────────────────────────────────────────────
   roundEndData: null,
   gameOverData: null,
 
-  // Public Rooms
+  // ── Public Rooms ────────────────────────────────────────────
   publicRooms: [],
 
-  // Actions
-  setSocket: (socket) => set({ socket }),
+  // ── Setters ─────────────────────────────────────────────────
   setConnected: (connected) => set({ connected }),
   setPlayerId: (playerId) => set({ playerId }),
   setPlayerName: (playerName) => set({ playerName }),
@@ -72,73 +75,83 @@ const useGameStore = create((set, get) => ({
   setRoundEndData: (roundEndData) => set({ roundEndData }),
   setGameOverData: (gameOverData) => set({ gameOverData }),
 
-  addMessage: (message) => set((state) => ({
-    messages: [...state.messages, { ...message, id: Date.now() + Math.random() }]
-  })),
+  // ── Messages (bounded) ─────────────────────────────────────
+  addMessage: (message) =>
+    set((state) => {
+      const id = ++messageCounter;
+      const updated = [...state.messages, { ...message, id }];
+      // Keep only the most recent messages
+      return { messages: updated.length > MAX_MESSAGES
+        ? updated.slice(-MAX_MESSAGES)
+        : updated };
+    }),
 
   clearMessages: () => set({ messages: [] }),
 
-  addDrawAction: (action) => set((state) => ({
-    drawHistory: [...state.drawHistory, action]
-  })),
+  // ── Draw History (bounded) ──────────────────────────────────
+  addDrawAction: (action) =>
+    set((state) => {
+      const updated = [...state.drawHistory, action];
+      return { drawHistory: updated.length > MAX_DRAW_HISTORY
+        ? updated.slice(-MAX_DRAW_HISTORY)
+        : updated };
+    }),
 
   clearDrawHistory: () => set({ drawHistory: [] }),
   setDrawHistory: (drawHistory) => set({ drawHistory }),
 
-  isDrawer: () => {
-    const state = get();
-    return state.playerId === state.drawerId;
-  },
+  // ── Reset (game only — keeps room/player) ───────────────────
+  resetGame: () =>
+    set({
+      gamePhase: 'lobby',
+      currentRound: 0,
+      drawerId: null,
+      drawerName: '',
+      currentWord: null,
+      hint: '',
+      wordLength: 0,
+      timeLeft: 0,
+      wordOptions: [],
+      messages: [],
+      drawHistory: [],
+      roundEndData: null,
+      gameOverData: null,
+    }),
 
-  resetGame: () => set({
-    gamePhase: 'lobby',
-    currentRound: 0,
-    drawerId: null,
-    drawerName: '',
-    currentWord: null,
-    hint: '',
-    wordLength: 0,
-    timeLeft: 0,
-    wordOptions: [],
-    messages: [],
-    drawHistory: [],
-    roundEndData: null,
-    gameOverData: null,
-  }),
-
-  resetAll: () => set({
-    socket: null,
-    connected: false,
-    playerId: null,
-    playerName: '',
-    isHost: false,
-    roomId: null,
-    players: [],
-    hostId: null,
-    settings: {
-      maxPlayers: 8,
-      rounds: 3,
-      drawTime: 80,
-      wordCount: 3,
-      maxHints: 3,
-      isPrivate: false,
-    },
-    gamePhase: 'lobby',
-    currentRound: 0,
-    totalRounds: 3,
-    drawerId: null,
-    drawerName: '',
-    currentWord: null,
-    hint: '',
-    wordLength: 0,
-    timeLeft: 0,
-    wordOptions: [],
-    messages: [],
-    drawHistory: [],
-    roundEndData: null,
-    gameOverData: null,
-    publicRooms: [],
-  }),
+  // ── Full reset (everything) ─────────────────────────────────
+  resetAll: () =>
+    set({
+      connected: false,
+      playerId: null,
+      playerName: '',
+      isHost: false,
+      roomId: null,
+      players: [],
+      hostId: null,
+      settings: {
+        maxPlayers: 8,
+        rounds: 3,
+        drawTime: 80,
+        wordCount: 3,
+        maxHints: 3,
+        isPrivate: false,
+      },
+      gamePhase: 'lobby',
+      currentRound: 0,
+      totalRounds: 3,
+      drawerId: null,
+      drawerName: '',
+      currentWord: null,
+      hint: '',
+      wordLength: 0,
+      timeLeft: 0,
+      wordOptions: [],
+      messages: [],
+      drawHistory: [],
+      roundEndData: null,
+      gameOverData: null,
+      publicRooms: [],
+    }),
 }));
 
 export default useGameStore;

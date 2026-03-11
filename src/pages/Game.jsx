@@ -15,18 +15,27 @@ export default function Game() {
   const navigate = useNavigate();
   const { roomId: urlRoomId } = useParams();
   const {
-    roomId, playerId, gamePhase, drawerId, roundEndData, gameOverData,
-    drawerName
+    roomId,
+    playerId,
+    gamePhase,
+    drawerId,
+    roundEndData,
+    gameOverData,
+    drawerName,
   } = useGameStore();
 
   const canvasRef = useRef(null);
 
+  /* ── Redirect to home if no session ──────────────────────────
+       Uses urlRoomId so the Home page can pre-fill the join form
+       when the user doesn't have an active session.             */
   useEffect(() => {
     if (!roomId && !playerId) {
-      navigate('/');
+      navigate(urlRoomId ? `/?join=${urlRoomId}` : '/');
     }
-  }, [roomId, playerId, navigate]);
+  }, [roomId, playerId, urlRoomId, navigate]);
 
+  /* ── Return to lobby when server resets the phase ──────────── */
   useEffect(() => {
     if (gamePhase === 'lobby') {
       navigate(`/lobby/${roomId || urlRoomId}`);
@@ -34,6 +43,7 @@ export default function Game() {
   }, [gamePhase, roomId, urlRoomId, navigate]);
 
   const isDrawer = playerId === drawerId;
+  const showCanvas = gamePhase === 'drawing' || gamePhase === 'round_end';
 
   return (
     <div className="min-h-screen p-2 md:p-4">
@@ -41,19 +51,17 @@ export default function Game() {
         <GameHeader />
 
         <div className="grid grid-cols-12 gap-2 md:gap-4 mt-2">
-          {/* Player List - Left */}
+          {/* ── Player List — Left ──────────────────────── */}
           <div className="col-span-12 md:col-span-2">
             <PlayerList />
           </div>
 
-          {/* Canvas - Center */}
+          {/* ── Canvas Area — Center ───────────────────── */}
           <div className="col-span-12 md:col-span-7">
             <div className="bg-white rounded-2xl shadow-lg overflow-hidden relative">
               {/* Word Selection Overlay */}
               <AnimatePresence>
-                {gamePhase === 'word_selection' && (
-                  <WordSelection />
-                )}
+                {gamePhase === 'word_selection' && <WordSelection />}
               </AnimatePresence>
 
               {/* Choosing Word Overlay */}
@@ -63,7 +71,8 @@ export default function Game() {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    className="flex items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200"
+                    className="flex items-center justify-center bg-gradient-to-br
+                               from-gray-100 to-gray-200"
                     style={{ height: '60vh', minHeight: '400px' }}
                   >
                     <div className="bg-white rounded-2xl p-8 text-center shadow-xl">
@@ -76,8 +85,8 @@ export default function Game() {
                 )}
               </AnimatePresence>
 
-              {/* Canvas */}
-              {(gamePhase === 'drawing' || gamePhase === 'round_end') && (
+              {/* Canvas + Drawing Tools */}
+              {showCanvas && (
                 <>
                   <Canvas ref={canvasRef} />
                   {isDrawer && gamePhase === 'drawing' && (
@@ -86,7 +95,7 @@ export default function Game() {
                 </>
               )}
 
-              {/* Round End Overlay */}
+              {/* Round End Overlay (on top of canvas) */}
               <AnimatePresence>
                 {gamePhase === 'round_end' && roundEndData && (
                   <RoundEnd data={roundEndData} />
@@ -108,7 +117,7 @@ export default function Game() {
             </div>
           </div>
 
-          {/* Chat - Right */}
+          {/* ── Chat — Right ───────────────────────────── */}
           <div className="col-span-12 md:col-span-3">
             <Chat />
           </div>

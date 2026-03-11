@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState, useCallback, forwardRef, useImperativeHandle } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  useCallback,
+  forwardRef,
+  useImperativeHandle,
+} from 'react';
 import useGameStore from '../store/gameStore';
 import { sendMessage } from '../services/socket';
 
@@ -14,8 +21,19 @@ const Canvas = forwardRef(function Canvas(props, ref) {
   const currentStrokeRef = useRef([]);
   const animFrameRef = useRef(null);
 
+  // ── Incremental rendering tracking ──────────────────────────
+  const prevHistoryLengthRef = useRef(0);
+
+  // ── Refs for stable access inside resize handler ────────────
+  const isDrawerRef = useRef(false);
+  const fullRedrawRef = useRef(null);
+  const redrawLocalStrokesRef = useRef(null);
+
   const { drawerId, playerId, gamePhase, drawHistory } = useGameStore();
   const isDrawer = playerId === drawerId && gamePhase === 'drawing';
+
+  // Keep the ref in sync
+  isDrawerRef.current = isDrawer;
 
   useImperativeHandle(ref, () => ({
     clearCanvas: handleClear,
@@ -27,6 +45,8 @@ const Canvas = forwardRef(function Canvas(props, ref) {
     color,
     brushSize,
   }));
+
+  // ── Canvas helpers ──────────────────────────────────────────
 
   const getCanvasDimensions = useCallback(() => {
     const container = containerRef.current;
@@ -45,37 +65,43 @@ const Canvas = forwardRef(function Canvas(props, ref) {
     ctx.fillRect(0, 0, dims.width, dims.height);
   }, [getCanvasDimensions]);
 
-  const renderActions = useCallback((actions) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    const dims = getCanvasDimensions();
+  const renderActions = useCallback(
+    (actions) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const dims = getCanvasDimensions();
 
-    for (const action of actions) {
-      if (action.type === 'draw_start') {
-        ctx.beginPath();
-        ctx.strokeStyle = action.color || '#000000';
-        ctx.lineWidth = action.size || 4;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        ctx.moveTo(action.x * dims.width, action.y * dims.height);
-      } else if (action.type === 'draw_move') {
-        ctx.strokeStyle = action.color || '#000000';
-        ctx.lineWidth = action.size || 4;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        ctx.lineTo(action.x * dims.width, action.y * dims.height);
-        ctx.stroke();
-      } else if (action.type === 'draw_end') {
-        ctx.closePath();
+      for (const action of actions) {
+        if (action.type === 'draw_start') {
+          ctx.beginPath();
+          ctx.strokeStyle = action.color || '#000000';
+          ctx.lineWidth = action.size || 4;
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          ctx.moveTo(action.x * dims.width, action.y * dims.height);
+        } else if (action.type === 'draw_move') {
+          ctx.strokeStyle = action.color || '#000000';
+          ctx.lineWidth = action.size || 4;
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          ctx.lineTo(action.x * dims.width, action.y * dims.height);
+          ctx.stroke();
+        } else if (action.type === 'draw_end') {
+          ctx.closePath();
+        }
       }
-    }
-  }, [getCanvasDimensions]);
+    },
+    [getCanvasDimensions]
+  );
 
-  const fullRedraw = useCallback((actions) => {
-    clearCanvasLocal();
-    renderActions(actions);
-  }, [clearCanvasLocal, renderActions]);
+  const fullRedraw = useCallback(
+    (actions) => {
+      clearCanvasLocal();
+      renderActions(actions);
+    },
+    [clearCanvasLocal, renderActions]
+  );
 
   const redrawLocalStrokes = useCallback(() => {
     clearCanvasLocal();
@@ -84,7 +110,12 @@ const Canvas = forwardRef(function Canvas(props, ref) {
     }
   }, [clearCanvasLocal, renderActions]);
 
-  // Initialize canvas sizing
+  // Keep refs current for the resize handler
+  fullRedrawRef.current = fullRedraw;
+  redrawLocalStrokesRef.current = redrawLocalStrokes;
+
+  // ── Canvas sizing ───────────────────────────────────────────
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -94,158 +125,192 @@ const Canvas = forwardRef(function Canvas(props, ref) {
       if (!container) return;
       const rect = container.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
+
       canvas.width = rect.width * dpr;
       canvas.height = rect.height * dpr;
       canvas.style.width = rect.width + 'px';
       canvas.style.height = rect.height + 'px';
+
       const ctx = canvas.getContext('2d');
       ctx.scale(dpr, dpr);
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
 
-      // Re-render content after resize
-      if (isDrawer) {
-        redrawLocalStrokes();
+      // Re-render after resize using refs (avoids stale closures)
+      if (isDrawerRef.current) {
+        redrawLocalStrokesRef.current();
       } else {
-        fullRedraw(drawHistory);
+        const currentHistory = useGameStore.getState().drawHistory;
+        fullRedrawRef.current(currentHistory);
+        prevHistoryLengthRef.current = currentHistory.length;
       }
     };
 
     updateSize();
     window.addEventListener('resize', updateSize);
     return () => window.removeEventListener('resize', updateSize);
-  }, [isDrawer]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Stable: uses refs for everything that could change
 
-  // FIXED: Full redraw for viewers whenever drawHistory changes
-  // This handles: new strokes, canvas clear, undo - all cases
-  const prevDrawHistoryRef = useRef(drawHistory);
+  // ── Viewer rendering — INCREMENTAL instead of full redraw ───
+  //
+  //  • New actions added  → render only the new ones  (fast)
+  //  • Canvas cleared     → clear canvas              (fast)
+  //  • Undo (shorter)     → full redraw               (rare)
+
   useEffect(() => {
     if (isDrawer) {
-      prevDrawHistoryRef.current = drawHistory;
+      prevHistoryLengthRef.current = drawHistory.length;
       return;
     }
 
-    // Cancel any pending frame
     if (animFrameRef.current) {
       cancelAnimationFrame(animFrameRef.current);
     }
 
     animFrameRef.current = requestAnimationFrame(() => {
-      fullRedraw(drawHistory);
-    });
+      const prevLen = prevHistoryLengthRef.current;
+      const currLen = drawHistory.length;
 
-    prevDrawHistoryRef.current = drawHistory;
+      if (currLen === 0 && prevLen > 0) {
+        // Canvas was cleared
+        clearCanvasLocal();
+      } else if (currLen > prevLen) {
+        // New actions appended → render only the diff
+        renderActions(drawHistory.slice(prevLen));
+      } else if (currLen < prevLen) {
+        // Undo or other reduction → must redraw everything
+        fullRedraw(drawHistory);
+      }
+      // currLen === prevLen && currLen > 0: no change
+
+      prevHistoryLengthRef.current = currLen;
+    });
 
     return () => {
       if (animFrameRef.current) {
         cancelAnimationFrame(animFrameRef.current);
       }
     };
-  }, [drawHistory, isDrawer, fullRedraw]);
+  }, [drawHistory, isDrawer, clearCanvasLocal, renderActions, fullRedraw]);
 
-  const getPos = useCallback((e) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return { x: 0, y: 0 };
-    const rect = canvas.getBoundingClientRect();
-    let clientX, clientY;
+  // ── Input handling ──────────────────────────────────────────
 
-    if (e.touches && e.touches.length > 0) {
-      clientX = e.touches[0].clientX;
-      clientY = e.touches[0].clientY;
-    } else {
-      clientX = e.clientX;
-      clientY = e.clientY;
-    }
+  const getPos = useCallback(
+    (e) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return { x: 0, y: 0 };
+      const rect = canvas.getBoundingClientRect();
+      let clientX, clientY;
 
-    return {
-      x: (clientX - rect.left) / rect.width,
-      y: (clientY - rect.top) / rect.height,
-    };
-  }, []);
+      if (e.touches && e.touches.length > 0) {
+        clientX = e.touches[0].clientX;
+        clientY = e.touches[0].clientY;
+      } else {
+        clientX = e.clientX;
+        clientY = e.clientY;
+      }
 
-  const startDrawing = useCallback((e) => {
-    if (!isDrawer) return;
-    e.preventDefault();
+      return {
+        x: (clientX - rect.left) / rect.width,
+        y: (clientY - rect.top) / rect.height,
+      };
+    },
+    []
+  );
 
-    const pos = getPos(e);
-    setIsDrawing(true);
-    lastPointRef.current = pos;
+  const startDrawing = useCallback(
+    (e) => {
+      if (!isDrawer) return;
+      e.preventDefault();
 
-    const currentColor = tool === 'eraser' ? '#FFFFFF' : color;
-    const currentSize = tool === 'eraser' ? brushSize * 4 : brushSize;
+      const pos = getPos(e);
+      setIsDrawing(true);
+      lastPointRef.current = pos;
 
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    const dims = getCanvasDimensions();
+      const currentColor = tool === 'eraser' ? '#FFFFFF' : color;
+      const currentSize = tool === 'eraser' ? brushSize * 4 : brushSize;
 
-    ctx.beginPath();
-    ctx.strokeStyle = currentColor;
-    ctx.lineWidth = currentSize;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.moveTo(pos.x * dims.width, pos.y * dims.height);
-
-    // Draw a dot for single clicks
-    ctx.lineTo(pos.x * dims.width + 0.1, pos.y * dims.height + 0.1);
-    ctx.stroke();
-
-    const action = {
-      type: 'draw_start',
-      x: pos.x,
-      y: pos.y,
-      color: currentColor,
-      size: currentSize,
-    };
-
-    currentStrokeRef.current = [action];
-    sendMessage('draw_data', action);
-  }, [isDrawer, tool, color, brushSize, getPos, getCanvasDimensions]);
-
-  const draw = useCallback((e) => {
-    if (!isDrawing || !isDrawer) return;
-    e.preventDefault();
-
-    const pos = getPos(e);
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    const dims = getCanvasDimensions();
-
-    ctx.lineTo(pos.x * dims.width, pos.y * dims.height);
-    ctx.stroke();
-
-    const currentColor = tool === 'eraser' ? '#FFFFFF' : color;
-    const currentSize = tool === 'eraser' ? brushSize * 4 : brushSize;
-
-    const action = {
-      type: 'draw_move',
-      x: pos.x,
-      y: pos.y,
-      color: currentColor,
-      size: currentSize,
-    };
-
-    currentStrokeRef.current.push(action);
-    lastPointRef.current = pos;
-    sendMessage('draw_data', action);
-  }, [isDrawing, isDrawer, tool, color, brushSize, getPos, getCanvasDimensions]);
-
-  const stopDrawing = useCallback((e) => {
-    if (!isDrawing) return;
-    if (e) e.preventDefault();
-
-    setIsDrawing(false);
-    const canvas = canvasRef.current;
-    if (canvas) {
+      const canvas = canvasRef.current;
       const ctx = canvas.getContext('2d');
-      ctx.closePath();
-    }
+      const dims = getCanvasDimensions();
 
-    const endAction = { type: 'draw_end' };
-    currentStrokeRef.current.push(endAction);
-    localStrokesRef.current.push([...currentStrokeRef.current]);
-    currentStrokeRef.current = [];
-    sendMessage('draw_data', endAction);
-  }, [isDrawing]);
+      ctx.beginPath();
+      ctx.strokeStyle = currentColor;
+      ctx.lineWidth = currentSize;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.moveTo(pos.x * dims.width, pos.y * dims.height);
+
+      // Draw a dot for single clicks
+      ctx.lineTo(pos.x * dims.width + 0.1, pos.y * dims.height + 0.1);
+      ctx.stroke();
+
+      const action = {
+        type: 'draw_start',
+        x: pos.x,
+        y: pos.y,
+        color: currentColor,
+        size: currentSize,
+      };
+
+      currentStrokeRef.current = [action];
+      sendMessage('draw_data', action);
+    },
+    [isDrawer, tool, color, brushSize, getPos, getCanvasDimensions]
+  );
+
+  const draw = useCallback(
+    (e) => {
+      if (!isDrawing || !isDrawer) return;
+      e.preventDefault();
+
+      const pos = getPos(e);
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext('2d');
+      const dims = getCanvasDimensions();
+
+      ctx.lineTo(pos.x * dims.width, pos.y * dims.height);
+      ctx.stroke();
+
+      const currentColor = tool === 'eraser' ? '#FFFFFF' : color;
+      const currentSize = tool === 'eraser' ? brushSize * 4 : brushSize;
+
+      const action = {
+        type: 'draw_move',
+        x: pos.x,
+        y: pos.y,
+        color: currentColor,
+        size: currentSize,
+      };
+
+      currentStrokeRef.current.push(action);
+      lastPointRef.current = pos;
+      sendMessage('draw_data', action);
+    },
+    [isDrawing, isDrawer, tool, color, brushSize, getPos, getCanvasDimensions]
+  );
+
+  const stopDrawing = useCallback(
+    (e) => {
+      if (!isDrawing) return;
+      if (e) e.preventDefault();
+
+      setIsDrawing(false);
+      const canvas = canvasRef.current;
+      if (canvas) {
+        const ctx = canvas.getContext('2d');
+        ctx.closePath();
+      }
+
+      const endAction = { type: 'draw_end' };
+      currentStrokeRef.current.push(endAction);
+      localStrokesRef.current.push([...currentStrokeRef.current]);
+      currentStrokeRef.current = [];
+      sendMessage('draw_data', endAction);
+    },
+    [isDrawing]
+  );
 
   const handleClear = useCallback(() => {
     if (!isDrawer) return;
@@ -264,11 +329,16 @@ const Canvas = forwardRef(function Canvas(props, ref) {
     }
   }, [isDrawer, redrawLocalStrokes]);
 
-  // Reset local strokes when game phase changes to drawing (new round)
+  // Reset local strokes on new round
   useEffect(() => {
-    if (gamePhase === 'drawing' || gamePhase === 'word_selection' || gamePhase === 'choosing') {
+    if (
+      gamePhase === 'drawing' ||
+      gamePhase === 'word_selection' ||
+      gamePhase === 'choosing'
+    ) {
       localStrokesRef.current = [];
       currentStrokeRef.current = [];
+      prevHistoryLengthRef.current = 0;
     }
   }, [gamePhase]);
 
@@ -280,7 +350,13 @@ const Canvas = forwardRef(function Canvas(props, ref) {
     >
       <canvas
         ref={canvasRef}
-        className={`w-full h-full ${isDrawer ? (tool === 'eraser' ? 'eraser-cursor' : 'drawing-canvas') : 'cursor-default'}`}
+        className={`w-full h-full ${
+          isDrawer
+            ? tool === 'eraser'
+              ? 'eraser-cursor'
+              : 'drawing-canvas'
+            : 'cursor-default'
+        }`}
         onMouseDown={startDrawing}
         onMouseMove={draw}
         onMouseUp={stopDrawing}

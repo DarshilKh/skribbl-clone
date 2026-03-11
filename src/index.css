@@ -1,6 +1,22 @@
 @import "tailwindcss";
 
-/* ---------- Global Reset ---------- */
+/* ── Tailwind v4 Theme Tokens ──────────────────────────────────
+   Automatically generates bg-*, text-*, from-*, to-*, border-*,
+   ring-*, and opacity variants (e.g. bg-primary/10) for each
+   color — no hand-written utility classes needed.              */
+
+@theme {
+  --color-primary:      #6c5ce7;
+  --color-primary-dark:  #5a4bcf;
+  --color-secondary:    #00cec9;
+  --color-success:      #2ecc71;
+  --color-warning:      #f1c40f;
+  --color-danger:       #e74c3c;
+  --color-accent:       #a29bfe;
+  --color-dark:         #2d3436;
+}
+
+/* ── Global Reset ──────────────────────────────────────────── */
 
 * {
   box-sizing: border-box;
@@ -10,7 +26,7 @@ html, body, #root {
   height: 100%;
 }
 
-/* ---------- Page Background ---------- */
+/* ── Page Background ───────────────────────────────────────── */
 
 body {
   margin: 0;
@@ -23,77 +39,11 @@ body {
     #a29bfe 100%
   );
 
-  min-height: 100vh;
+  /* dvh accounts for mobile Safari address-bar resize */
+  min-height: 100dvh;
 }
 
-/* ---------- Custom Theme Variables ---------- */
-
-:root {
-  --primary: #6c5ce7;
-  --primary-dark: #5a4bcf;
-
-  --secondary: #00cec9;
-
-  --success: #2ecc71;
-
-  --warning: #f1c40f;
-
-  --danger: #e74c3c;
-
-  --accent: #a29bfe;
-
-  --dark: #2d3436;
-}
-
-/* ---------- Background Utilities ---------- */
-
-.bg-primary {
-  background-color: var(--primary);
-}
-
-.bg-primary-dark {
-  background-color: var(--primary-dark);
-}
-
-.bg-secondary {
-  background-color: var(--secondary);
-}
-
-.bg-success {
-  background-color: var(--success);
-}
-
-.bg-warning {
-  background-color: var(--warning);
-}
-
-.bg-danger {
-  background-color: var(--danger);
-}
-
-.bg-accent {
-  background-color: var(--accent);
-}
-
-/* ---------- Text Utilities ---------- */
-
-.text-primary {
-  color: var(--primary);
-}
-
-.text-danger {
-  color: var(--danger);
-}
-
-.text-success {
-  color: var(--success);
-}
-
-.text-warning {
-  color: var(--warning);
-}
-
-/* ---------- Canvas Cursors ---------- */
+/* ── Canvas Cursors ────────────────────────────────────────── */
 
 .drawing-canvas {
   cursor: crosshair;
@@ -103,7 +53,7 @@ body {
   cursor: crosshair;
 }
 
-/* ---------- Scrollbar Styling ---------- */
+/* ── Scrollbar Styling ─────────────────────────────────────── */
 
 ::-webkit-scrollbar {
   width: 6px;

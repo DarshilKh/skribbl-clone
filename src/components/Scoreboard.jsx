@@ -1,5 +1,4 @@
 import { motion } from 'framer-motion';
-import useGameStore from '../store/gameStore';
 
 export default function Scoreboard({ data }) {
   if (!data) return null;
