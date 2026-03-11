@@ -6,8 +6,8 @@ const MAX_RECONNECT_ATTEMPTS = 5;
 const RECONNECT_DELAY = 2000;
 
 const WS_URL = import.meta.env.PROD
-  ? `wss://${window.location.host}/ws`
-  : `ws://localhost:8080/ws`;
+  ? "wss://skribbl-backend-yfpu.onrender.com/ws"
+  : "ws://localhost:8080/ws";
 
 export function connectWebSocket(onOpenCallback) {
   if (ws && ws.readyState === WebSocket.OPEN) {
@@ -142,7 +142,7 @@ function handleMessage(message) {
 
     case 'word_selection':
       store.setGamePhase('word_selection');
-      store.setWordOptions(payload.words);
+      store.setWordOptions(payload.words);  
       store.setCurrentRound(payload.round);
       store.setTotalRounds(payload.totalRounds);
       store.setTimeLeft(payload.drawTime);
