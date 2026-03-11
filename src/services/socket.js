@@ -1,0 +1,284 @@
+import useGameStore from '../store/gameStore';
+
+let ws = null;
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 5;
+const RECONNECT_DELAY = 2000;
+
+const WS_URL = import.meta.env.PROD
+  ? `wss://${window.location.host}/ws`
+  : `ws://localhost:8080/ws`;
+
+export function connectWebSocket(onOpenCallback) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    if (onOpenCallback) onOpenCallback();
+    return;
+  }
+
+  if (ws && ws.readyState === WebSocket.CONNECTING) {
+    const waitForOpen = setInterval(() => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        clearInterval(waitForOpen);
+        if (onOpenCallback) onOpenCallback();
+      }
+    }, 100);
+    return;
+  }
+
+  ws = new WebSocket(WS_URL);
+  const store = useGameStore.getState();
+  store.setSocket(ws);
+
+  ws.onopen = () => {
+    console.log('WebSocket connected');
+    reconnectAttempts = 0;
+    useGameStore.getState().setConnected(true);
+    if (onOpenCallback) onOpenCallback();
+  };
+
+  ws.onmessage = (event) => {
+    try {
+      const message = JSON.parse(event.data);
+      handleMessage(message);
+    } catch (e) {
+      console.error('Failed to parse message:', e);
+    }
+  };
+
+  ws.onclose = (event) => {
+    console.log('WebSocket disconnected, code:', event.code);
+    useGameStore.getState().setConnected(false);
+    ws = null;
+
+    if (event.code !== 1000 && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+      reconnectAttempts++;
+      console.log(`Reconnect attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS} in ${RECONNECT_DELAY}ms`);
+      setTimeout(() => {
+        const state = useGameStore.getState();
+        if (state.roomId) {
+          connectWebSocket(() => {
+            sendMessage('join_room', {
+              roomId: state.roomId,
+              playerName: state.playerName,
+            });
+          });
+        }
+      }, RECONNECT_DELAY * reconnectAttempts);
+    }
+  };
+
+  ws.onerror = (error) => {
+    console.error('WebSocket error:', error);
+  };
+}
+
+export function sendMessage(type, payload = {}) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type, payload }));
+  } else {
+    console.warn('WebSocket not connected, cannot send:', type);
+  }
+}
+
+export function disconnectWebSocket() {
+  reconnectAttempts = MAX_RECONNECT_ATTEMPTS;
+  if (ws) {
+    ws.close(1000, 'User disconnected');
+    ws = null;
+  }
+}
+
+function handleMessage(message) {
+  const { type, payload } = message;
+  const store = useGameStore.getState();
+
+  switch (type) {
+    case 'room_created':
+      store.setRoomId(payload.roomId);
+      store.setPlayerId(payload.playerId);
+      store.setPlayers(payload.players);
+      store.setIsHost(payload.isHost);
+      if (payload.settings) store.setSettings(payload.settings);
+      break;
+
+    case 'room_joined':
+      store.setRoomId(payload.roomId);
+      store.setPlayerId(payload.playerId);
+      store.setPlayers(payload.players);
+      store.setIsHost(payload.isHost);
+      store.setHostId(payload.hostId);
+      if (payload.settings) store.setSettings(payload.settings);
+      break;
+
+    case 'player_joined':
+      store.setPlayers(payload.players);
+      store.addMessage({
+        type: 'system',
+        text: `${payload.playerName} joined the room`,
+      });
+      break;
+
+    case 'player_left':
+      store.setPlayers(payload.players);
+      store.setHostId(payload.hostId);
+      if (payload.hostId === store.playerId) {
+        store.setIsHost(true);
+      }
+      store.addMessage({
+        type: 'system',
+        text: `${payload.playerName} left the room`,
+      });
+      break;
+
+    case 'settings_updated':
+      if (payload.settings) store.setSettings(payload.settings);
+      break;
+
+    case 'game_starting':
+      store.setGamePhase('starting');
+      store.clearMessages();
+      store.addMessage({ type: 'system', text: 'Game is starting!' });
+      break;
+
+    case 'word_selection':
+      store.setGamePhase('word_selection');
+      store.setWordOptions(payload.words);
+      store.setCurrentRound(payload.round);
+      store.setTotalRounds(payload.totalRounds);
+      store.setTimeLeft(payload.drawTime);
+      store.clearDrawHistory();
+      break;
+
+    case 'choosing_word':
+      store.setGamePhase('choosing');
+      store.setDrawerId(payload.drawerId);
+      store.setDrawerName(payload.drawerName);
+      store.setCurrentRound(payload.round);
+      store.setTotalRounds(payload.totalRounds);
+      store.setCurrentWord(null);
+      store.setHint('');
+      store.clearDrawHistory();
+      store.addMessage({
+        type: 'system',
+        text: `${payload.drawerName} is choosing a word...`,
+      });
+      break;
+
+    case 'round_start_drawer':
+      store.setGamePhase('drawing');
+      store.setCurrentWord(payload.word);
+      store.setHint(payload.hint);
+      store.setTimeLeft(payload.drawTime);
+      store.setCurrentRound(payload.round);
+      store.setTotalRounds(payload.totalRounds);
+      store.setDrawerId(store.playerId);
+      break;
+
+    case 'round_start_guesser':
+      store.setGamePhase('drawing');
+      store.setHint(payload.hint);
+      store.setTimeLeft(payload.drawTime);
+      store.setDrawerId(payload.drawerId);
+      store.setDrawerName(payload.drawerName);
+      store.setCurrentRound(payload.round);
+      store.setTotalRounds(payload.totalRounds);
+      store.setWordLength(payload.wordLength);
+      store.setCurrentWord(null);
+      break;
+
+    case 'timer_update':
+      store.setTimeLeft(payload.timeLeft);
+      break;
+
+    case 'hint_update':
+      store.setHint(payload.hint);
+      break;
+
+    case 'draw_data':
+      store.addDrawAction(payload);
+      break;
+
+    case 'canvas_clear':
+      store.clearDrawHistory();
+      break;
+
+    case 'draw_undo':
+      store.setDrawHistory(payload.drawHistory || []);
+      break;
+
+    case 'correct_guess':
+      store.setPlayers(payload.players);
+      store.addMessage({
+        type: 'correct',
+        text: `${payload.playerName} guessed the word! (+${payload.points})`,
+        playerName: payload.playerName,
+      });
+      break;
+
+    case 'chat_message':
+      store.addMessage({
+        type: payload.isClose ? 'close' : 'chat',
+        text: payload.text,
+        playerName: payload.playerName,
+        playerId: payload.playerId,
+        isGuess: payload.isGuess,
+      });
+      break;
+
+    case 'close_guess':
+      store.addMessage({
+        type: 'close',
+        text: payload.message,
+      });
+      break;
+
+    case 'round_end':
+      store.setGamePhase('round_end');
+      store.setRoundEndData(payload);
+      store.setPlayers(payload.players);
+      store.addMessage({
+        type: 'system',
+        text: `Round ended! The word was: ${payload.word}`,
+      });
+      break;
+
+    case 'game_over':
+      store.setGamePhase('game_over');
+      store.setGameOverData(payload);
+      store.addMessage({
+        type: 'system',
+        text: `Game over! ${payload.winner} wins!`,
+      });
+      break;
+
+    case 'return_to_lobby':
+      store.resetGame();
+      store.setPlayers(payload.players);
+      store.setHostId(payload.hostId);
+      if (payload.hostId === store.playerId) {
+        store.setIsHost(true);
+      }
+      break;
+
+    case 'kicked':
+      store.resetAll();
+      alert(payload.message || 'You have been kicked!');
+      window.location.href = '/';
+      break;
+
+    case 'error':
+      store.addMessage({
+        type: 'error',
+        text: payload.message,
+      });
+      console.error('Server error:', payload.message);
+      break;
+
+    case 'public_rooms':
+      store.setPublicRooms(payload.rooms);
+      break;
+
+    default:
+      console.log('Unknown message type:', type, payload);
+  }
+}

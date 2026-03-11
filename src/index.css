@@ -1,0 +1,119 @@
+@import "tailwindcss";
+
+/* ---------- Global Reset ---------- */
+
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+/* ---------- Page Background ---------- */
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, sans-serif;
+
+  background: linear-gradient(
+    135deg,
+    #6c5ce7 0%,
+    #8e7cf3 40%,
+    #a29bfe 100%
+  );
+
+  min-height: 100vh;
+}
+
+/* ---------- Custom Theme Variables ---------- */
+
+:root {
+  --primary: #6c5ce7;
+  --primary-dark: #5a4bcf;
+
+  --secondary: #00cec9;
+
+  --success: #2ecc71;
+
+  --warning: #f1c40f;
+
+  --danger: #e74c3c;
+
+  --accent: #a29bfe;
+
+  --dark: #2d3436;
+}
+
+/* ---------- Background Utilities ---------- */
+
+.bg-primary {
+  background-color: var(--primary);
+}
+
+.bg-primary-dark {
+  background-color: var(--primary-dark);
+}
+
+.bg-secondary {
+  background-color: var(--secondary);
+}
+
+.bg-success {
+  background-color: var(--success);
+}
+
+.bg-warning {
+  background-color: var(--warning);
+}
+
+.bg-danger {
+  background-color: var(--danger);
+}
+
+.bg-accent {
+  background-color: var(--accent);
+}
+
+/* ---------- Text Utilities ---------- */
+
+.text-primary {
+  color: var(--primary);
+}
+
+.text-danger {
+  color: var(--danger);
+}
+
+.text-success {
+  color: var(--success);
+}
+
+.text-warning {
+  color: var(--warning);
+}
+
+/* ---------- Canvas Cursors ---------- */
+
+.drawing-canvas {
+  cursor: crosshair;
+}
+
+.eraser-cursor {
+  cursor: crosshair;
+}
+
+/* ---------- Scrollbar Styling ---------- */
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #ccc;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #aaa;
+}
