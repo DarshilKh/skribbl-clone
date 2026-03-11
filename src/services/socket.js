@@ -5,17 +5,20 @@ let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 5;
 const RECONNECT_DELAY = 2000;
 
-const WS_URL = import.meta.env.PROD
-  ? "wss://skribbl-backend-yfpu.onrender.com/ws"
-  : "ws://localhost:8080/ws";
+// Use environment variable, fallback to localhost
+const WS_URL = import.meta.env.VITE_WS_URL || "ws://localhost:8080/ws";
+
+console.log('WebSocket will connect to:', WS_URL);
 
 export function connectWebSocket(onOpenCallback) {
   if (ws && ws.readyState === WebSocket.OPEN) {
+    console.log('WebSocket already open');
     if (onOpenCallback) onOpenCallback();
     return;
   }
 
   if (ws && ws.readyState === WebSocket.CONNECTING) {
+    console.log('WebSocket already connecting, waiting...');
     const waitForOpen = setInterval(() => {
       if (ws && ws.readyState === WebSocket.OPEN) {
         clearInterval(waitForOpen);
@@ -25,12 +28,13 @@ export function connectWebSocket(onOpenCallback) {
     return;
   }
 
+  console.log('Initiating WebSocket connection to:', WS_URL);
   ws = new WebSocket(WS_URL);
   const store = useGameStore.getState();
   store.setSocket(ws);
 
   ws.onopen = () => {
-    console.log('WebSocket connected');
+    console.log('✅ WebSocket connected successfully');
     reconnectAttempts = 0;
     useGameStore.getState().setConnected(true);
     if (onOpenCallback) onOpenCallback();
@@ -46,13 +50,13 @@ export function connectWebSocket(onOpenCallback) {
   };
 
   ws.onclose = (event) => {
-    console.log('WebSocket disconnected, code:', event.code);
+    console.log('WebSocket disconnected, code:', event.code, 'reason:', event.reason);
     useGameStore.getState().setConnected(false);
     ws = null;
 
     if (event.code !== 1000 && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
       reconnectAttempts++;
-      console.log(`Reconnect attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS} in ${RECONNECT_DELAY}ms`);
+      console.log(`Reconnect attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS} in ${RECONNECT_DELAY * reconnectAttempts}ms`);
       setTimeout(() => {
         const state = useGameStore.getState();
         if (state.roomId) {
@@ -62,13 +66,18 @@ export function connectWebSocket(onOpenCallback) {
               playerName: state.playerName,
             });
           });
+        } else {
+          connectWebSocket();
         }
       }, RECONNECT_DELAY * reconnectAttempts);
+    } else if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+      console.error('Max reconnection attempts reached');
     }
   };
 
   ws.onerror = (error) => {
-    console.error('WebSocket error:', error);
+    console.error('❌ WebSocket error:', error);
+    console.error('Connection URL was:', WS_URL);
   };
 }
 
