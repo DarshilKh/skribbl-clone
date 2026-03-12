@@ -1,10 +1,5 @@
 @import "tailwindcss";
 
-/* ── Tailwind v4 Theme Tokens ──────────────────────────────────
-   Automatically generates bg-*, text-*, from-*, to-*, border-*,
-   ring-*, and opacity variants (e.g. bg-primary/10) for each
-   color — no hand-written utility classes needed.              */
-
 @theme {
   --color-primary:      #6c5ce7;
   --color-primary-dark:  #5a4bcf;
@@ -39,18 +34,19 @@ body {
     #a29bfe 100%
   );
 
-  /* dvh accounts for mobile Safari address-bar resize */
   min-height: 100dvh;
 }
 
-/* ── Canvas Cursors ────────────────────────────────────────── */
+/* ── Canvas Cursors + Touch Fix ────────────────────────────── */
 
 .drawing-canvas {
   cursor: crosshair;
+  touch-action: none;   /* ← ADDED: prevents scroll/zoom on touch */
 }
 
 .eraser-cursor {
   cursor: crosshair;
+  touch-action: none;   /* ← ADDED: prevents scroll/zoom on touch */
 }
 
 /* ── Scrollbar Styling ─────────────────────────────────────── */

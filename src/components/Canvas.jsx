@@ -21,10 +21,10 @@ const Canvas = forwardRef(function Canvas(props, ref) {
   const currentStrokeRef = useRef([]);
   const animFrameRef = useRef(null);
 
-  // ── Incremental rendering tracking ──────────────────────────
+  // Incremental rendering tracking
   const prevHistoryLengthRef = useRef(0);
 
-  // ── Refs for stable access inside resize handler ────────────
+  // Refs for stable access inside resize/touch handlers
   const isDrawerRef = useRef(false);
   const fullRedrawRef = useRef(null);
   const redrawLocalStrokesRef = useRef(null);
@@ -32,7 +32,7 @@ const Canvas = forwardRef(function Canvas(props, ref) {
   const { drawerId, playerId, gamePhase, drawHistory } = useGameStore();
   const isDrawer = playerId === drawerId && gamePhase === 'drawing';
 
-  // Keep the ref in sync
+  // Keep ref in sync
   isDrawerRef.current = isDrawer;
 
   useImperativeHandle(ref, () => ({
@@ -110,7 +110,7 @@ const Canvas = forwardRef(function Canvas(props, ref) {
     }
   }, [clearCanvasLocal, renderActions]);
 
-  // Keep refs current for the resize handler
+  // Keep refs current for resize and touch handlers
   fullRedrawRef.current = fullRedraw;
   redrawLocalStrokesRef.current = redrawLocalStrokes;
 
@@ -136,7 +136,6 @@ const Canvas = forwardRef(function Canvas(props, ref) {
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
 
-      // Re-render after resize using refs (avoids stale closures)
       if (isDrawerRef.current) {
         redrawLocalStrokesRef.current();
       } else {
@@ -150,13 +149,43 @@ const Canvas = forwardRef(function Canvas(props, ref) {
     window.addEventListener('resize', updateSize);
     return () => window.removeEventListener('resize', updateSize);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  // Stable: uses refs for everything that could change
 
-  // ── Viewer rendering — INCREMENTAL instead of full redraw ───
+  // ══════════════════════════════════════════════════════════════
+  // ── TOUCH SCROLL FIX ─────────────────────────────────────────
+  // React registers touch listeners as PASSIVE by default.
+  // Passive listeners cannot call preventDefault(), so the browser
+  // scrolls even when we try to prevent it.
   //
-  //  • New actions added  → render only the new ones  (fast)
-  //  • Canvas cleared     → clear canvas              (fast)
-  //  • Undo (shorter)     → full redraw               (rare)
+  // Solution: attach NATIVE event listeners with { passive: false }
+  // so preventDefault() actually works. The CSS `touch-action: none`
+  // handles most cases, but this is the belt-and-suspenders fix
+  // for older Android browsers.
+  // ══════════════════════════════════════════════════════════════
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const preventTouchScroll = (e) => {
+      if (isDrawerRef.current) {
+        e.preventDefault();
+      }
+    };
+
+    // { passive: false } tells the browser: "I WILL call preventDefault,
+    // so don't start scrolling before I've had a chance to cancel it"
+    canvas.addEventListener('touchstart', preventTouchScroll, { passive: false });
+    canvas.addEventListener('touchmove', preventTouchScroll, { passive: false });
+    canvas.addEventListener('touchend', preventTouchScroll, { passive: false });
+
+    return () => {
+      canvas.removeEventListener('touchstart', preventTouchScroll);
+      canvas.removeEventListener('touchmove', preventTouchScroll);
+      canvas.removeEventListener('touchend', preventTouchScroll);
+    };
+  }, []);
+
+  // ── Viewer rendering — incremental ─────────────────────────
 
   useEffect(() => {
     if (isDrawer) {
@@ -173,16 +202,12 @@ const Canvas = forwardRef(function Canvas(props, ref) {
       const currLen = drawHistory.length;
 
       if (currLen === 0 && prevLen > 0) {
-        // Canvas was cleared
         clearCanvasLocal();
       } else if (currLen > prevLen) {
-        // New actions appended → render only the diff
         renderActions(drawHistory.slice(prevLen));
       } else if (currLen < prevLen) {
-        // Undo or other reduction → must redraw everything
         fullRedraw(drawHistory);
       }
-      // currLen === prevLen && currLen > 0: no change
 
       prevHistoryLengthRef.current = currLen;
     });
@@ -196,28 +221,25 @@ const Canvas = forwardRef(function Canvas(props, ref) {
 
   // ── Input handling ──────────────────────────────────────────
 
-  const getPos = useCallback(
-    (e) => {
-      const canvas = canvasRef.current;
-      if (!canvas) return { x: 0, y: 0 };
-      const rect = canvas.getBoundingClientRect();
-      let clientX, clientY;
+  const getPos = useCallback((e) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
+    const rect = canvas.getBoundingClientRect();
+    let clientX, clientY;
 
-      if (e.touches && e.touches.length > 0) {
-        clientX = e.touches[0].clientX;
-        clientY = e.touches[0].clientY;
-      } else {
-        clientX = e.clientX;
-        clientY = e.clientY;
-      }
+    if (e.touches && e.touches.length > 0) {
+      clientX = e.touches[0].clientX;
+      clientY = e.touches[0].clientY;
+    } else {
+      clientX = e.clientX;
+      clientY = e.clientY;
+    }
 
-      return {
-        x: (clientX - rect.left) / rect.width,
-        y: (clientY - rect.top) / rect.height,
-      };
-    },
-    []
-  );
+    return {
+      x: (clientX - rect.left) / rect.width,
+      y: (clientY - rect.top) / rect.height,
+    };
+  }, []);
 
   const startDrawing = useCallback(
     (e) => {
@@ -242,7 +264,6 @@ const Canvas = forwardRef(function Canvas(props, ref) {
       ctx.lineJoin = 'round';
       ctx.moveTo(pos.x * dims.width, pos.y * dims.height);
 
-      // Draw a dot for single clicks
       ctx.lineTo(pos.x * dims.width + 0.1, pos.y * dims.height + 0.1);
       ctx.stroke();
 
@@ -346,7 +367,12 @@ const Canvas = forwardRef(function Canvas(props, ref) {
     <div
       ref={containerRef}
       className="relative bg-white"
-      style={{ height: '60vh', minHeight: '400px' }}
+      style={{
+        height: '60vh',
+        minHeight: '400px',
+        // ── TOUCH FIX: prevent scroll/zoom on the container too ──
+        touchAction: isDrawer ? 'none' : 'auto',
+      }}
     >
       <canvas
         ref={canvasRef}
@@ -357,10 +383,13 @@ const Canvas = forwardRef(function Canvas(props, ref) {
               : 'drawing-canvas'
             : 'cursor-default'
         }`}
+        // Mouse events (desktop) — React handlers work fine
         onMouseDown={startDrawing}
         onMouseMove={draw}
         onMouseUp={stopDrawing}
         onMouseLeave={stopDrawing}
+        // Touch events (mobile) — React handlers for drawing logic
+        // preventDefault is handled by native listeners above
         onTouchStart={startDrawing}
         onTouchMove={draw}
         onTouchEnd={stopDrawing}
