@@ -62,8 +62,24 @@ A full-featured multiplayer drawing and guessing game clone built with React and
 - Maven 3.9+
 
 ### Backend
-```bash
+
 cd backend
 mvn clean install
 mvn spring-boot:run
 # Runs on [http://localhost:8080](https://skribbl-backend-yfpu.onrender.com/)
+
+## 🌐 Deployment
+Service	Platform	URL
+Frontend	Netlify	https://skribblclone.netlify.app
+Backend	Render	https://skribbl-backend-yfpu.onrender.com
+
+Note: Render free tier sleeps after 15 minutes of inactivity.
+First connection may take ~30 seconds for cold start.
+
+## 📝 Key Design Decisions
+Raw WebSocket over STOMP — Simpler protocol, full control over message format, lower overhead
+Normalized coordinates — Drawing works identically across all screen sizes
+In-memory state — No database needed for ephemeral game rooms
+Incremental canvas rendering — Viewers only render new strokes, not full redraws
+Per-room synchronization — Rooms don't block each other during concurrent operations
+Monotonic message IDs — Prevents React key collisions in chat
