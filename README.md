@@ -1,10 +1,20 @@
+<div align="center">
+
 # 🎨 Skribbl Clone — Real-time Multiplayer Drawing Game
 
 A production-grade, real-time multiplayer drawing and guessing game built with React + Spring Boot + WebSockets.  
 Designed for low-latency communication, scalable room-based gameplay, and clean system architecture.
 
-[![Live Demo](https://img.shields.io/badge/Live%20Demo-Play-6366f1?style=for-the-badge&logo=vercel)](https://skribblclone.netlify.app)
+[![Live Demo](https://img.shields.io/badge/▲%20LIVE%20DEMO-PLAY-6366f1?style=for-the-badge)](https://skribblclone.netlify.app)
 
+<br/>
+
+![React](https://img.shields.io/badge/React-20232A?style=flat-square&logo=react&logoColor=61DAFB)
+![Spring Boot](https://img.shields.io/badge/SpringBoot-6DB33F?style=flat-square&logo=springboot&logoColor=white)
+![WebSockets](https://img.shields.io/badge/WebSockets-010101?style=flat-square&logo=socket.io&logoColor=white)
+![Java](https://img.shields.io/badge/Java-ED8B00?style=flat-square&logo=openjdk&logoColor=white)
+
+</div>
 ---
 
 ## 🚀 Highlights
