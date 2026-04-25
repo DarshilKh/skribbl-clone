@@ -3,11 +3,7 @@
 A production-grade, real-time multiplayer drawing and guessing game built with React + Spring Boot + WebSockets.  
 Designed for low-latency communication, scalable room-based gameplay, and clean system architecture.
 
----
-
-## 🌐 Live Demo
-
-https://skribblclone.netlify.app/
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Play-6366f1?style=for-the-badge&logo=vercel)](https://skribblclone.netlify.app)
 
 ---
 
