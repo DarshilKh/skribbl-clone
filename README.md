@@ -1,80 +1,196 @@
-# 🎨 Skribbl Clone
+# 🎨 Skribbl Clone — Real-time Multiplayer Drawing Game
 
-A full-featured multiplayer drawing and guessing game clone built with React and Spring Boot.
+A production-grade, real-time multiplayer drawing and guessing game built with **React + Spring Boot + WebSockets**.
+Designed for **low-latency communication**, **scalable room-based gameplay**, and **clean system architecture**.
+
+---
 
 ## 🌐 Live Demo
 
-**https://skribblclone.netlify.app/**
+👉 https://skribblclone.netlify.app/
 
-## ✨ Features
+---
 
-- **Multiplayer Rooms** - Create/join public or private rooms with unique room codes
-- **Turn-based Drawing** - Each player takes turns drawing while others guess
-- **Real-time Drawing Sync** - Canvas strokes sync instantly via WebSockets
-- **Word Selection** - Drawer picks from multiple word options
-- **Smart Scoring** - Points based on guess speed and order
-- **Hints System** - Letters revealed progressively over time
-- **Close Guess Detection** - Levenshtein distance-based near-miss detection
-- **Drawing Tools** - Brush, eraser, color picker, size selector, undo, clear
-- **Room Settings** - Configurable players, rounds, draw time, hints, word choices
-- **Host Moderation** - Kick players, manage settings
-- **Responsive Design** - Works on desktop and mobile
+## 🚀 Highlights
 
+* ⚡ Real-time multiplayer sync (sub-second latency)
+* 🎯 Event-driven architecture with authoritative server state
+* 🧠 Intelligent guess detection (Levenshtein distance)
+* 🏗️ Scalable room-based system (concurrent users)
+* 🎨 Optimized canvas rendering (incremental updates)
+* 📱 Fully responsive (desktop + mobile)
 
-### Drawing Flow
-1. Drawer mouse/touch events captured on HTML5 Canvas
-2. Coordinates normalized (0-1 range) and sent via WebSocket
-3. Server broadcasts to all other players
-4. Receivers render strokes on their canvas using normalized coords
+---
 
-### Game State Management
-- Server maintains authoritative game state per room
-- Phases: LOBBY → WORD_SELECTION → DRAWING → ROUND_END → (repeat) → GAME_OVER
-- Timer management via ScheduledExecutorService
-- Turn rotation through shuffled player order
+## ✨ Core Features
 
-### WebSocket Protocol
-- Raw WebSocket (not STOMP) with JSON messages
-- Format: `{ "type": "event_name", "payload": { ... } }`
-- Server-side: Spring WebSocket `TextWebSocketHandler`
-- Client-side: Native `WebSocket` API
+### 🎮 Gameplay
+
+* Multiplayer rooms (public/private with unique codes)
+* Turn-based drawing system
+* Word selection with multiple options
+* Progressive hints system
+* Smart scoring (based on speed + accuracy)
+
+### ⚡ Real-Time System
+
+* Instant canvas sync using WebSockets
+* Event-based communication protocol
+* Low-latency message broadcasting
+* Multi-user synchronization
+
+### 🎨 Drawing Engine
+
+* Brush, eraser, color picker, size control
+* Undo + clear canvas
+* Smooth stroke rendering
+* Cross-device consistent drawing
+
+### 🛠️ Room & Control
+
+* Configurable game settings (rounds, timers, players)
+* Host moderation (kick users, control flow)
+* Isolated room state (no cross-room interference)
+
+---
+
+## 🏗️ System Architecture
+
+```
+Client (React + Canvas)
+        ↓
+WebSocket Layer (Event-based)
+        ↓
+Spring Boot Server (Game Engine)
+        ↓
+In-Memory State (Room-based)
+```
+
+---
+
+## ⚡ Real-Time Flow (How it works)
+
+1. User draws → Canvas captures coordinates
+2. Coordinates normalized (0–1 range)
+3. Sent via WebSocket to backend
+4. Server broadcasts to all players in room
+5. Clients render strokes in real-time
+
+---
+
+## 🧠 Game State Management
+
+* Server maintains **authoritative state per room**
+* Finite State Machine:
+
+```
+LOBBY → WORD_SELECTION → DRAWING → ROUND_END → GAME_OVER
+```
+
+* Turn rotation via shuffled player queue
+* Timers managed using `ScheduledExecutorService`
+* State transitions handled server-side (prevents cheating)
+
+---
+
+## 📡 WebSocket Protocol
+
+* Raw WebSocket (no STOMP overhead)
+* JSON-based messaging:
+
+```json
+{ "type": "event_name", "payload": { ... } }
+```
+
+* Backend: `TextWebSocketHandler`
+* Frontend: Native WebSocket API
+
+---
 
 ## 🛠️ Tech Stack
 
-| Layer | Technology |
-|-------|-----------|
-| Frontend | React 19 + Vite |
-| Styling | TailwindCSS v4 |
-| Animation | Framer Motion |
-| Routing | React Router v7 |
-| State | Zustand v5 |
-| Canvas | HTML5 Canvas API |
-| Backend | Spring Boot 3.5.3 |
-| Language | Java 21 |
-| WebSocket | Spring WebSocket (Raw) |
-| Storage | ConcurrentHashMap (in-memory) |
+### 💻 Frontend
 
-## 🚀 Setup & Run
+* React 19 (Vite)
+* TailwindCSS v4
+* Framer Motion
+* React Router v7
+* Zustand (state management)
+* HTML5 Canvas API
+
+### ⚙️ Backend
+
+* Spring Boot 3.5.3
+* Java 21
+* Spring WebSocket (Raw)
+
+### 🧠 System
+
+* In-memory storage (ConcurrentHashMap)
+* Event-driven architecture
+* Room-based isolation
+
+---
+
+## ⚡ Performance Optimizations
+
+* Normalized coordinates → device-independent rendering
+* Incremental canvas updates (no full redraw)
+* Per-room state isolation → parallel scalability
+* Lightweight WebSocket protocol → reduced overhead
+
+---
+
+## 🚀 Setup
 
 ### Prerequisites
-- Java 21+
-- Node.js 18+
-- Maven 3.9+
+
+* Java 21+
+* Node.js 18+
+* Maven 3.9+
 
 ### Backend
 
+```bash
 cd backend
 mvn clean install
 mvn spring-boot:run
-# Runs on [http://localhost:8080](https://skribbl-backend-yfpu.onrender.com/)
+```
 
-- Note: Render free tier sleeps after 15 minutes of inactivity.
-- First connection may take ~30 seconds for cold start.
+Runs on: http://localhost:8080
+(Deployed on Render — cold start ~30s)
 
-## 📝 Key Design Decisions
-- Raw WebSocket over STOMP — Simpler protocol, full control over message format, lower overhead
-- Normalized coordinates — Drawing works identically across all screen sizes
-- In-memory state — No database needed for ephemeral game rooms
-- Incremental canvas rendering — Viewers only render new strokes, not full redraws
-- Per-room synchronization — Rooms don't block each other during concurrent operations
-- Monotonic message IDs — Prevents React key collisions in chat
+---
+
+## 🧾 Key Engineering Decisions
+
+* **Raw WebSockets over STOMP** → lower latency, full protocol control
+* **Server-authoritative state** → prevents client-side manipulation
+* **Normalized coordinates** → consistent rendering across devices
+* **In-memory storage** → optimized for ephemeral game sessions
+* **Event-driven design** → scalable and maintainable
+
+---
+
+## 📈 What This Project Demonstrates
+
+* Real-time system design
+* WebSocket-based communication
+* Multiplayer state synchronization
+* Backend architecture (Spring Boot)
+* Frontend performance optimization
+* Clean, production-ready code structure
+
+---
+
+## 🤝 Contributing
+
+Open to improvements, optimizations, and feature ideas.
+
+---
+
+## ⭐ If you found this useful
+
+Consider giving a star — it helps visibility.
+
+---
